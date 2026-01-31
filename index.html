@@ -1,267 +1,205 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-<meta charset="UTF-8">
-<title>Pro Striker – Ultimate</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <meta charset="UTF-8">
+    <title>Striker Tycoon: Professional Career</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        :root { --main-gold: #f1c40f; --grass: #2d5a27; }
+        body { margin: 0; padding: 0; background: #111; font-family: 'Segoe UI', sans-serif; overflow: hidden; color: white; }
+        
+        /* MODERN UI */
+        #game-container { position: relative; width: 100vw; height: 100vh; }
+        #sidebar { position: absolute; left: 0; top: 0; width: 250px; height: 100%; background: rgba(0,0,0,0.9); border-right: 2px solid var(--main-gold); z-index: 10; padding: 20px; box-sizing: border-box; }
+        
+        .stat-card { background: #222; padding: 10px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid var(--main-gold); }
+        .btn-action { background: var(--main-gold); color: black; border: none; padding: 10px; width: 100%; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 5px; }
+        
+        #energy-bar-wrap { width: 100%; height: 10px; background: #333; border-radius: 5px; margin-top: 10px; }
+        #energy-fill { width: 100%; height: 100%; background: #3498db; border-radius: 5px; transition: 0.3s; }
 
-<style>
-body {
-  margin: 0;
-  overflow: hidden;
-  background: #000;
-  font-family: 'Segoe UI', sans-serif;
-}
-canvas { display: block; }
+        #stadium-canvas { background: radial-gradient(circle, #386641 0%, #1a472a 100%); }
 
-/* UI */
-#overlay {
-  position: absolute;
-  top: 20px;
-  width: 100%;
-  text-align: center;
-  color: white;
-  pointer-events: none;
-}
-.stats {
-  font-size: 20px;
-  letter-spacing: 2px;
-  background: rgba(0,0,0,0.5);
-  padding: 10px 20px;
-  border-radius: 10px;
-  display: inline-block;
-}
-
-#goal-anim {
-  position: absolute;
-  top: 40%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #f1c40f;
-  font-size: 80px;
-  font-weight: 900;
-  display: none;
-  text-shadow: 0 0 20px #000;
-  font-style: italic;
-}
-
-/* POWER BAR */
-#power {
-  position: absolute;
-  bottom: 40px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 300px;
-  height: 15px;
-  border: 2px solid #fff;
-  border-radius: 10px;
-}
-#power-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, #2ecc71, #f1c40f, #e74c3c);
-  border-radius: 8px;
-}
-
-/* SHAKE */
-@keyframes shake {
-  0% { transform: translate(0,0); }
-  25% { transform: translate(6px,0); }
-  50% { transform: translate(-6px,0); }
-  75% { transform: translate(6px,0); }
-  100% { transform: translate(0,0); }
-}
-</style>
+        /* MODAL / MENU */
+        #overlay-msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 100; text-align: center; }
+        .goal-text { font-size: 120px; font-weight: 900; color: var(--main-gold); text-shadow: 0 0 30px #000; display: none; }
+    </style>
 </head>
-
 <body>
 
-<div id="overlay">
-  <div class="stats">
-    SKOR: <span id="score">0</span> |
-    EN YÜKSEK: <span id="high">0</span>
-  </div>
-</div>
+<div id="game-container">
+    <div id="sidebar">
+        <h2 style="color: var(--main-gold); margin-top: 0;">PRO CAREER</h2>
+        <div class="stat-card">
+            <div>MEVKİ: <span id="p-rank">Çaylak</span></div>
+            <div>SEVİYE: <span id="p-lvl">1</span></div>
+        </div>
+        <div class="stat-card">
+            <div>PARA: <span id="p-money">0</span> $</div>
+            <div>İTİBAR: <span id="p-rep">0</span></div>
+        </div>
+        
+        <hr border="0" style="border-top:1px solid #444; margin: 20px 0;">
+        
+        <h3 style="font-size: 14px;">YETENEKLER</h3>
+        <div style="font-size: 12px;">Şut Gücü (Lvl <span id="s-pow">1</span>)</div>
+        <button class="btn-action" onclick="Career.upgrade('power')">GELİŞTİR (50$)</button>
+        
+        <div style="font-size: 12px; margin-top:10px;">Falso (Lvl <span id="s-cur">1</span>)</div>
+        <button class="btn-action" onclick="Career.upgrade('curve')">GELİŞTİR (50$)</button>
 
-<div id="goal-anim">GOOOOOL!</div>
+        <div id="energy-bar-wrap"><div id="energy-fill"></div></div>
+        <div style="font-size: 10px; text-align: center; margin-top: 5px;">KONDİSYON</div>
 
-<div id="power">
-  <div id="power-fill"></div>
+        <button class="btn-action" style="margin-top: 40px; background: #e74c3c; color: white;" onclick="Career.reset()">KARİYERİ SIFIRLA</button>
+    </div>
+
+    <div id="overlay-msg"><div id="goal-text" class="goal-text">GOAL!</div></div>
+    <canvas id="stadium-canvas"></canvas>
 </div>
 
 <script>
-/* ======================
-   ENGINE
-====================== */
-const { Engine, Render, Runner, World, Bodies, Body, Events, Common } = Matter;
+/* ================================================================
+   FOOTBALL ENGINE v1.0 - CORE MODULES
+   ================================================================
+*/
 
-const engine = Engine.create();
-const world = engine.world;
-const width = window.innerWidth;
-const height = window.innerHeight;
+const { Engine, Render, Runner, World, Bodies, Body, Events, Vector } = Matter;
 
-const render = Render.create({
-  element: document.body,
-  engine: engine,
-  options: {
-    width,
-    height,
-    wireframes: false,
-    background: 'radial-gradient(circle, #2d5a27 0%, #1a472a 100%)'
-  }
-});
+// --- 1. DATA MODULE (Kariyer Verileri) ---
+const Career = {
+    data: {
+        money: 0, xp: 0, lvl: 1, rep: 0, energy: 100,
+        stats: { power: 1, curve: 1, accuracy: 1 },
+        inventory: [],
+        lastSave: Date.now()
+    },
 
-/* ======================
-   FIELD
-====================== */
-for(let i=0;i<5;i++){
-  World.add(world,
-    Bodies.rectangle(width/2, height - i*150, width, 2, {
-      isStatic:true,
-      render:{fillStyle:'rgba(255,255,255,0.1)'}
-    })
-  );
-}
+    init() {
+        const saved = localStorage.getItem('fb_career_save');
+        if (saved) this.data = JSON.parse(saved);
+        this.updateUI();
+    },
 
-/* ======================
-   GOAL
-====================== */
-const goalWidth = 350;
-World.add(world, [
-  Bodies.rectangle(width/2-goalWidth/2,180,15,250,{isStatic:true}),
-  Bodies.rectangle(width/2+goalWidth/2,180,15,250,{isStatic:true}),
-  Bodies.rectangle(width/2,60,goalWidth+15,15,{isStatic:true})
-]);
+    save() {
+        localStorage.setItem('fb_career_save', JSON.stringify(this.data));
+    },
 
-/* ======================
-   GOALIE
-====================== */
-const goalie = Bodies.rectangle(width/2,150,60,90,{
-  isStatic:true,
-  render:{ fillStyle:'#2980b9' }
-});
-World.add(world, goalie);
+    upgrade(type) {
+        if (this.data.money >= 50) {
+            this.data.money -= 50;
+            this.data.stats[type]++;
+            this.updateUI();
+            this.save();
+        }
+    },
 
-/* ======================
-   BALL
-====================== */
-let ball;
-function spawnBall(){
-  if(ball) World.remove(world, ball);
-  ball = Bodies.circle(width/2, height-120, 22,{
-    restitution:0.7,
-    frictionAir:0.02,
-    density:0.005,
-    render:{ fillStyle:'#fff' }
-  });
-  ball.isGoal=false;
-  World.add(world, ball);
-}
-spawnBall();
+    updateUI() {
+        document.getElementById('p-money').innerText = this.data.money;
+        document.getElementById('p-lvl').innerText = this.data.lvl;
+        document.getElementById('s-pow').innerText = this.data.stats.power;
+        document.getElementById('s-cur').innerText = this.data.stats.curve;
+        document.getElementById('energy-fill').style.width = this.data.energy + "%";
+    },
 
-/* ======================
-   SCORE
-====================== */
-let score=0, high=0;
+    reset() { if(confirm("Kariyerin silinsin mi?")) { localStorage.clear(); location.reload(); } }
+};
 
-/* ======================
-   INPUT & POWER
-====================== */
-let startPoint=null;
-let charging=false;
-let power=0;
-const powerFill=document.getElementById('power-fill');
+// --- 2. PHYSICS MODULE (Maç Motoru) ---
+const Game = {
+    engine: Engine.create(),
+    world: null,
+    ball: null,
+    goalie: null,
+    isCharging: false,
+    chargeStart: 0,
 
-window.addEventListener('mousedown',e=>{
-  startPoint={x:e.clientX,y:e.clientY};
-  charging=true;
-});
+    setup() {
+        this.world = this.engine.world;
+        const canvas = document.getElementById('stadium-canvas');
+        const render = Render.create({
+            canvas: canvas,
+            engine: this.engine,
+            options: { width: window.innerWidth, height: window.innerHeight, wireframes: false, background: 'transparent' }
+        });
 
-window.addEventListener('mouseup',e=>{
-  if(!startPoint) return;
-  charging=false;
+        // Saha ve Kale
+        const ground = Bodies.rectangle(window.innerWidth/2, window.innerHeight + 20, window.innerWidth, 60, { isStatic: true });
+        const postLeft = Bodies.rectangle(window.innerWidth/2 - 180, 150, 15, 250, { isStatic: true, render: { fillStyle: '#fff' } });
+        const postRight = Bodies.rectangle(window.innerWidth/2 + 180, 150, 15, 250, { isStatic: true, render: { fillStyle: '#fff' } });
+        const crossbar = Bodies.rectangle(window.innerWidth/2, 30, 370, 15, { isStatic: true, render: { fillStyle: '#fff' } });
+        
+        this.goalie = Bodies.rectangle(window.innerWidth/2, 140, 70, 100, { isStatic: true, render: { fillStyle: '#3498db' } });
+        
+        World.add(this.world, [ground, postLeft, postRight, crossbar, this.goalie]);
+        this.spawnBall();
+        
+        Render.run(render);
+        Runner.run(Runner.create(), this.engine);
+        this.initControls();
+        this.loop();
+    },
 
-  const angle=Math.atan2(
-    startPoint.y-e.clientY,
-    startPoint.x-e.clientX
-  );
+    spawnBall() {
+        if(this.ball) World.remove(this.world, this.ball);
+        this.ball = Bodies.circle(window.innerWidth/2, window.innerHeight - 100, 22, {
+            restitution: 0.7, frictionAir: 0.015,
+            render: { sprite: { texture: 'https://cdn-icons-png.flaticon.com/512/33/33736.png', xScale: 0.1, yScale: 0.1 } }
+        });
+        this.ball.scored = false;
+        World.add(this.world, this.ball);
+    },
 
-  Body.applyForce(ball, ball.position,{
-    x:Math.cos(angle)*power,
-    y:Math.sin(angle)*power
-  });
+    initControls() {
+        window.addEventListener('mousedown', () => { if(Career.data.energy >= 10) this.isCharging = true; });
+        window.addEventListener('mouseup', (e) => {
+            if(!this.isCharging) return;
+            this.isCharging = false;
+            this.shoot(e.clientX, e.clientY);
+        });
+    },
 
-  power=0;
-  powerFill.style.width='0%';
-  startPoint=null;
-});
+    shoot(ex, ey) {
+        const dx = (window.innerWidth/2) - ex;
+        const dy = (window.innerHeight - 100) - ey;
+        const force = 0.005 + (Career.data.stats.power * 0.001);
+        
+        Body.applyForce(this.ball, this.ball.position, { x: dx * force * 0.1, y: dy * force * 0.1 });
+        Career.data.energy -= 10;
+        Career.updateUI();
+    },
 
-/* ======================
-   GAME LOOP
-====================== */
-let reactionDelay = 20;
+    loop() {
+        Events.on(this.engine, 'beforeUpdate', () => {
+            // Kaleci AI (Level'a göre zorluk)
+            const gSpeed = 0.03 + (Career.data.lvl * 0.01);
+            const targetX = this.ball.position.x;
+            const newX = this.goalie.position.x + (targetX - this.goalie.position.x) * gSpeed;
+            Body.setPosition(this.goalie, { x: Math.max(window.innerWidth/2 - 150, Math.min(window.innerWidth/2 + 150, newX)), y: 140 });
 
-Events.on(engine,'beforeUpdate',()=>{
+            // Gol Kontrolü
+            if(!this.ball.scored && this.ball.position.y < 120 && Math.abs(this.ball.position.x - window.innerWidth/2) < 170) {
+                this.ball.scored = true;
+                this.handleGoal();
+            }
+        });
+    },
 
-  /* POWER CHARGE */
-  if(charging && power<0.05){
-    power+=0.001;
-    powerFill.style.width=`${(power/0.05)*100}%`;
-  }
+    handleGoal() {
+        Career.data.money += 25;
+        Career.data.xp += 20;
+        Career.updateUI();
+        Career.save();
+        
+        const gText = document.getElementById('goal-text');
+        gText.style.display = 'block';
+        setTimeout(() => { gText.style.display = 'none'; this.spawnBall(); }, 1500);
+    }
+};
 
-  /* GOALIE AI */
-  if(reactionDelay--<=0){
-    const targetX = ball.position.x + Common.random(-30,30);
-    const newX = goalie.position.x + (targetX-goalie.position.x)*0.05;
-    Body.setPosition(goalie,{
-      x:Common.clamp(
-        newX,
-        width/2-goalWidth/2+40,
-        width/2+goalWidth/2-40
-      ),
-      y:150
-    });
-  }
-
-  /* GOAL CHECK */
-  if(!ball.isGoal &&
-     ball.position.y<120 &&
-     ball.position.x>width/2-160 &&
-     ball.position.x<width/2+160){
-      ball.isGoal=true;
-      celebrate();
-  }
-});
-
-/* ======================
-   GOAL EFFECT
-====================== */
-function celebrate(){
-  score++;
-  document.getElementById('score').innerText=score;
-  if(score>high){
-    high=score;
-    document.getElementById('high').innerText=high;
-  }
-
-  const msg=document.getElementById('goal-anim');
-  msg.style.display='block';
-
-  engine.timing.timeScale=0.4;
-  document.body.style.animation='shake 0.4s';
-
-  setTimeout(()=>{
-    msg.style.display='none';
-    engine.timing.timeScale=1;
-    document.body.style.animation='';
-    reactionDelay=20;
-    spawnBall();
-  },1200);
-}
-
-Render.run(render);
-Runner.run(Runner.create(), engine);
+// Başlat
+Career.init();
+Game.setup();
 </script>
-
 </body>
 </html>
